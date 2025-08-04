@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard de Enlace Óptico - Ferramenta Profissional</title>
+  
+  <!-- Metadados e Links -->
+  <meta name="description" content="Dashboard profissional para cálculo e visualização de enlace óptico. Determine a distância máxima e analise o orçamento de potência com gráficos interativos.">
+  <meta name="keywords" content="dashboard, enlace óptico, fibra óptica, calculadora, gráfico, chart.js, telecomunicações, dBm">
+  <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#007aff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
+
+  <!-- Preload de recursos críticos -->
+  <link rel="preload" href="https://cdn.jsdelivr.net/npm/chart.js" as="script">
+  <link rel="preload" href="styles-ios.css" as="style">
+  <link rel="preload" href="script.js" as="script">
+  
+  <!-- CSS -->
+  <link rel="stylesheet" href="styles-ios.css">
+  
+  <!-- Content Security Policy (Atualizada para CDN) -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self';">
+  
+</head>
+<body>
+  <div class="container">
+    <header role="banner">
+      <h1 id="calc-title">Dashboard de Enlace Óptico</h1>
+      <p class="subtitle">Análise e cálculo de viabilidade de enlaces de fibra óptica</p>
+    </header>
+    
+    <!-- LAYOUT PRINCIPAL DO DASHBOARD -->
+    <main id="main-content" class="dashboard-layout">
+      
+      <!-- COLUNA DE ENTRADA -->
+      <div class="dashboard-column" id="coluna-entrada">
+        <form id="calculadora-form" role="form" aria-labelledby="calc-title" novalidate>
+          <fieldset>
+            <legend>Parâmetros do Enlace</legend>
+            <!-- Grupos de formulário (tx, rx, perdaFibra, margem) permanecem os mesmos -->
+            <div class="form-group">
+                <label for="tx" id="tx-label">Potência de Transmissão (Tx)</label>
+                <div class="input-container">
+                  <input type="number" id="tx" value="-5" step="0.01" placeholder="Ex: -5" aria-required="true">
+                  <span class="unit">dBm</span>
+                </div>
+                <div id="tx-feedback" class="feedback-campo" aria-live="polite"></div>
+            </div>
+            <div class="form-group">
+                <label for="rx" id="rx-label">Limiar de Recepção (Rx)</label>
+                <div class="input-container">
+                  <input type="number" id="rx" value="-15.5" step="0.01" placeholder="Ex: -15.5" aria-required="true">
+                  <span class="unit">dBm</span>
+                </div>
+                <div id="rx-feedback" class="feedback-campo" aria-live="polite"></div>
+            </div>
+            <div class="form-group">
+                <label for="perdaFibra" id="perda-label">Perda da Fibra</label>
+                <div class="input-container">
+                  <input type="number" id="perdaFibra" value="0.35" step="0.01" placeholder="Ex: 0.35" aria-required="true">
+                  <span class="unit">dB/km</span>
+                </div>
+                <div id="perda-feedback" class="feedback-campo" aria-live="polite"></div>
+            </div>
+            <div class="form-group">
+                <label for="margem" id="margem-label">Margem de Segurança</label>
+                <div class="input-container">
+                  <input type="number" id="margem" value="3" step="0.1" placeholder="Ex: 3" aria-required="true">
+                  <span class="unit">dB</span>
+                </div>
+                <div id="margem-feedback" class="feedback-campo" aria-live="polite"></div>
+            </div>
+          </fieldset>
+  
+          <div class="button-group">
+            <button type="button" id="btn-calcular" class="btn btn-primary">
+              <span class="btn-text">Analisar Enlace</span>
+              <span class="btn-loading" aria-hidden="true"></span>
+            </button>
+            <button type="button" id="btn-limpar" class="btn btn-secondary">
+              Limpar
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- COLUNA DE RESULTADOS -->
+      <div class="dashboard-column" id="coluna-resultados">
+        <section id="painel-resultados" class="painel-resultados" aria-live="polite">
+          <h2 class="sr-only">Painel de Resultados</h2>
+
+          <!-- RESULTADO NUMÉRICO -->
+          <div id="resultado" class="resultado">
+              <p class="placeholder-text">Os resultados da análise aparecerão aqui.</p>
+          </div>
+
+          <!-- GRÁFICO -->
+          <div id="grafico-container" class="grafico-container" style="display: none;">
+              <canvas id="resultado-grafico" role="img" aria-label="Gráfico de distribuição do orçamento óptico"></canvas>
+          </div>
+
+        </section>
+      </div>
+
+    </main>
+
+    <!-- SEÇÃO DE HISTÓRICO (AGORA FORA DO LAYOUT PRINCIPAL) -->
+    <section id="historico-section" class="historico-section" aria-labelledby="historico-title">
+      <h2 id="historico-title">Histórico de Análises</h2>
+      <div id="historico-lista" class="historico-lista" role="log" aria-live="polite">
+        <p class="historico-vazio">Nenhuma análise realizada ainda.</p>
+      </div>
+      <button type="button" id="btn-limpar-historico" class="btn btn-outline" disabled>
+        Limpar Histórico
+      </button>
+    </section>
+
+    <footer role="contentinfo">
+      <p>&copy; 2025 Dashboard de Enlace Óptico.</p>
+    </footer>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="script.js" defer></script>
+  <script src="register-sw.js" defer></script>
+</body>
+</html>
