@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#5B5FEF">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<title>Leitor OTDR V2 — Análise técnica de arquivos .SOR</title>
+<!-- Bibliotecas usadas apenas para exportação de PDF (carregadas sob demanda, sem custo se a função não for usada) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#E7ECF3;
+    --card:#EEF2F7;
+    --border:#D8DEE8;
+    --text:#1B2237;
+    --text-dim:#6B7590;
+    --text-faint:#9AA3BD;
+    --accent:#5B5FEF;
+    --accent-soft:#E8ECF8;
+    --accent-2:#3F8CFF;
+    --green:#1FAE71;
+    --green-soft:#E2F4EC;
+    --orange:#F5A524;
+    --orange-soft:#FAEFD8;
+    --red:#E5484D;
+    --red-soft:#F8E6E7;
+    --radius:16px;
+    --radius-sm:10px;
+    --shadow-out:9px 9px 20px rgba(166,177,197,.55), -9px -9px 20px rgba(255,255,255,.95);
+    --shadow-soft:5px 5px 12px rgba(166,177,197,.42), -5px -5px 12px rgba(255,255,255,.80);
+    --shadow-in:inset 4px 4px 10px rgba(166,177,197,.40), inset -4px -4px 10px rgba(255,255,255,.85);
+  }
+  body{
+    font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,sans-serif;
+    background:linear-gradient(145deg,#E8EDF4,#E3E8F0); color:var(--text);
+    display:flex; min-height:100vh;
+  }
+
+  /* ===== Sidebar ===== */
+  .sidebar{
+    width:216px; flex-shrink:0; background:linear-gradient(145deg,#EAF0F6,#E4E9F0);
+    border-right:1px solid rgba(255,255,255,.7);
+    box-shadow:10px 0 26px rgba(145,157,180,.20); display:flex; flex-direction:column; padding:20px 16px; gap:6px;
+  }
+  .brand{
+    display:flex; flex-direction:column; align-items:center; gap:8px;
+    background:linear-gradient(145deg,#E4EAF2,#F3F6FA); border-radius:var(--radius); padding:18px 12px 14px;
+    margin-bottom:18px; box-shadow:var(--shadow-out);
+  }
+  .brand-icon{
+    width:52px; height:52px; border-radius:14px; background:linear-gradient(145deg,#F4F7FB,#E8EDF4);
+    display:flex; align-items:center; justify-content:center; box-shadow:var(--shadow-soft);
+  }
+  .brand-icon svg{width:26px;height:26px}
+  .brand-label{font-size:12px; font-weight:700; letter-spacing:.06em; color:var(--accent)}
+
+  .nav-item{
+    display:flex; align-items:center; gap:11px; padding:10px 12px; border-radius:var(--radius-sm);
+    color:var(--text-dim); font-size:13.5px; font-weight:600; cursor:pointer; border:none; background:none;
+    text-align:left; width:100%;
+  }
+  .nav-item svg{width:17px;height:17px; flex-shrink:0}
+  .nav-item:hover{background:#E8EDF4; color:var(--text); box-shadow:var(--shadow-in)}
+  .nav-item.active{background:linear-gradient(145deg,#676BF2,#5559E5); color:#fff; box-shadow:7px 7px 16px rgba(91,95,239,.28),-5px -5px 12px rgba(255,255,255,.72)}
+
+  .nav-spacer{flex:1}
+
+  .import-card{
+    border:2px dashed #C9CFE6; border-radius:var(--radius); padding:16px 12px; text-align:center; cursor:pointer;
+    background:linear-gradient(145deg,#E8EDF4,#F2F5F9); box-shadow:var(--shadow-in);
+    transition:border-color .15s, background .15s, box-shadow .15s;
+  }
+  .import-card:hover, .import-card.dragover{border-color:var(--accent); background:#E9EDFB; box-shadow:var(--shadow-out)}
+  .import-card .ic-cloud{width:30px;height:30px;margin:0 auto 8px; color:var(--accent)}
+  .import-card .ic-title{font-size:12.5px; font-weight:700; margin-bottom:3px}
+  .import-card .ic-sub{font-size:10.5px; color:var(--text-faint); line-height:1.4}
+  .import-card input{display:none}
+
+  /* ===== Main ===== */
+  .main{flex:1; min-width:0; padding:22px 26px 30px; display:flex; flex-direction:column; gap:16px}
+
+  .topbar{display:flex; align-items:flex-start; justify-content:space-between; gap:16px}
+  .topbar h1{font-size:26px; font-weight:800; letter-spacing:-.01em}
+  .topbar .sub{font-size:13px; color:var(--text-dim); margin-top:2px}
+  .win-ctrls{display:flex; gap:8px}
+  .win-ctrls button{
+    width:34px; height:34px; border-radius:10px; border:1px solid rgba(255,255,255,.85); background:linear-gradient(145deg,#F2F6FA,#E6EBF2);
+    color:var(--text-dim); display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:var(--shadow-soft);
+  }
+  .win-ctrls button:hover{background:#F5F6FB; color:var(--text)}
+
+  .metrics-row{display:grid; grid-template-columns:repeat(5,1fr); gap:12px}
+  .metric-card{
+    background:linear-gradient(145deg,#EEF3F8,#E7ECF2); border:1px solid rgba(255,255,255,.7); border-radius:var(--radius);
+    padding:14px 16px; display:flex; align-items:center; gap:12px; box-shadow:var(--shadow-out);
+  }
+  .metric-ic{
+    width:38px; height:38px; border-radius:11px; background:linear-gradient(145deg,#EDF2F8,#E3E8EF); color:var(--accent);
+    display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:var(--shadow-in);
+  }
+  .metric-ic svg{width:18px;height:18px}
+  .metric-label{font-size:10.5px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:.04em}
+  .metric-value{font-size:17px; font-weight:800; margin-top:1px}
+
+  .body-grid{display:grid; grid-template-columns:1fr 320px; gap:16px; align-items:start}
+  .body-grid.single-col{grid-template-columns:1fr; max-width:520px; margin:0 auto; width:100%}
+  .body-grid.single-col .left-col{display:none}
+
+  .card{background:linear-gradient(145deg,#F1F5F9,#E8EDF3); border:1px solid rgba(255,255,255,.75); border-radius:var(--radius); box-shadow:var(--shadow-out)}
+  .card-head{display:flex; align-items:center; justify-content:space-between; padding:16px 18px 4px}
+  .card-title{font-size:11px; font-weight:800; letter-spacing:.07em; text-transform:uppercase; color:var(--text-faint)}
+  .icon-btns{display:flex; gap:6px}
+  .icon-btns button{
+    width:30px; height:30px; border-radius:9px; border:1px solid rgba(255,255,255,.85); background:linear-gradient(145deg,#F4F8FB,#E5EAF0); color:var(--text-dim);
+    display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:var(--shadow-soft);
+  }
+  .icon-btns button:hover{background:#F0F1FA; color:var(--accent)}
+  .icon-btns svg{width:14px;height:14px}
+
+  .chart-wrap{padding:6px 14px 4px}
+  #traceCanvas{width:100%; height:340px; display:block; cursor:crosshair; touch-action:none; border-radius:12px; background:var(--trace-bg,#EEF2F7); box-shadow:var(--shadow-in)}
+  .chart-hint{font-size:11px; color:var(--text-faint); padding:2px 18px 14px}
+
+  .empty-state{padding:60px 30px; text-align:center; color:var(--text-dim)}
+  .empty-state svg{width:44px;height:44px; color:var(--text-faint); margin-bottom:10px}
+  .empty-state b{color:var(--text); display:block; margin-bottom:4px; font-size:14px}
+  .empty-state span{font-size:12.5px}
+
+  table.events{width:100%; border-collapse:collapse; font-size:12.5px; min-width:0}
+  table.events thead th{
+    text-align:left; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--text-faint); padding:9px 18px; border-bottom:1px solid var(--border); background:linear-gradient(145deg,#EEF2F6,#E7ECF2);
+  }
+  table.events tbody td{padding:11px 18px; border-bottom:1px solid var(--border); color:var(--text-dim)}
+  table.events td.event-loss.loss-medium{color:#E58A00; font-weight:800}
+  table.events td.event-loss.loss-high{color:#D92F38; font-weight:800}
+  table.events tbody tr:last-child td{border-bottom:none}
+  table.events tbody tr{cursor:pointer}
+  table.events tbody tr:hover{background:#E9EEF4; box-shadow:var(--shadow-in)}
+  table.events tbody tr.sel{background:var(--accent-soft)}
+  table.events td:first-child, table.events td.strong{color:var(--text); font-weight:700}
+  .ev-badge{
+    display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size:11.5px;
+  }
+  .ev-dot{width:18px; height:18px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; color:#fff; flex-shrink:0}
+  .ev-dot svg{width:10px;height:10px}
+  .ev-num{
+    width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center;
+    color:#fff; font-size:11px; font-weight:800;
+  }
+
+  .side-col{display:flex; flex-direction:column; gap:14px}
+  .panel{background:linear-gradient(145deg,#F0F4F8,#E8EDF3); border:1px solid rgba(255,255,255,.75); border-radius:var(--radius); box-shadow:var(--shadow-out); padding:16px 18px}
+  .panel-title{font-size:11px; font-weight:800; letter-spacing:.07em; text-transform:uppercase; color:var(--text-faint); margin-bottom:12px; display:flex; align-items:center; justify-content:space-between}
+
+  .file-row{display:flex; align-items:center; gap:12px}
+  .file-ic{width:38px; height:38px; border-radius:10px; background:linear-gradient(145deg,#EDF2F8,#E3E8EF); color:var(--accent); display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:var(--shadow-in)}
+  .file-ic svg{width:18px;height:18px}
+  .file-name{font-size:13px; font-weight:700; word-break:break-all}
+  .file-meta{font-size:11px; color:var(--text-faint); margin-top:2px}
+  .file-check{margin-left:auto; color:var(--green); flex-shrink:0}
+  .file-check svg{width:20px;height:20px}
+  .no-file{font-size:12.5px; color:var(--text-faint)}
+
+  .cfg-row{display:flex; align-items:center; justify-content:space-between; padding:9px 0; border-bottom:1px solid var(--border); font-size:12.5px}
+  .cfg-row:last-child{border-bottom:none}
+  .cfg-row span:first-child{color:var(--text-dim)}
+  .cfg-val{
+    font-weight:700; background:linear-gradient(145deg,#E6EBF1,#F2F5F8); padding:5px 10px; border-radius:8px; font-size:12px; color:var(--text);
+    box-shadow:var(--shadow-in); border:1px solid rgba(255,255,255,.8);
+  }
+
+  .toggle{
+    width:38px; height:21px; border-radius:999px; background:#D8DCEC; position:relative; cursor:pointer; border:none; flex-shrink:0;
+  }
+  .toggle::after{content:'';position:absolute; width:16px;height:16px; border-radius:50%; background:#fff; top:2.5px; left:3px; transition:left .15s}
+  .toggle.on{background:var(--accent)}
+  .toggle.on::after{left:19px}
+
+  .trace-loss-legend{
+    margin-top:12px; padding-top:12px; border-top:1px solid var(--border);
+    display:grid; grid-template-columns:1fr; gap:6px; font-size:10.5px; color:var(--text-dim);
+  }
+  .loss-dot{
+    display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px;
+    vertical-align:-1px;
+  }
+  .loss-dot.normal{background:#5B5FEF}
+  .loss-dot.medium{background:#F5A524}
+  .loss-dot.high{background:#E5484D}
+
+  .trace-themes{
+    margin-top:12px; padding-top:12px; border-top:1px solid var(--border);
+  }
+  .trace-themes-title{
+    font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:var(--text-faint);
+    margin-bottom:8px;
+  }
+  .trace-theme{
+    width:100%; display:flex; align-items:center; gap:10px; text-align:left;
+    border:1px solid rgba(255,255,255,.7); border-radius:11px; padding:8px 9px; margin-top:7px;
+    background:linear-gradient(145deg,#EEF2F6,#E5EAF0); color:var(--text); cursor:pointer;
+    box-shadow:var(--shadow-soft);
+  }
+  .trace-theme:hover{transform:translateY(-1px)}
+  .trace-theme.active{
+    box-shadow:var(--shadow-in),0 0 0 2px rgba(91,95,239,.22);
+    outline:0;
+  }
+  .trace-theme:focus-visible{
+    outline:2px solid var(--accent); outline-offset:2px;
+  }
+  .theme-swatch{width:28px;height:28px;border-radius:8px;flex-shrink:0;position:relative;overflow:hidden;box-shadow:var(--shadow-in)}
+  .theme-swatch::after{content:'';position:absolute;left:4px;right:4px;top:13px;height:3px;border-radius:3px}
+  .blue-swatch{background:#EEF2F7}.blue-swatch::after{background:#5B5FEF}
+  .orange-black-swatch{background:#090909}.orange-black-swatch::after{background:#FF9800}
+  .green-black-swatch{background:#090909}.green-black-swatch::after{background:#39FF14}
+  .trace-theme b{display:block;font-size:11.5px}.trace-theme small{display:block;margin-top:1px;color:var(--text-faint);font-size:9.5px}
+
+  .cursor-row{display:flex; align-items:center; gap:8px; font-size:12px; padding:6px 0}
+  .cursor-tag{width:20px;height:20px;border-radius:6px;color:#fff;font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .cursor-row b{font-size:12.5px; color:var(--text)}
+  .cursor-row .dim{color:var(--text-faint); margin-left:auto}
+  .cursor-diff{
+    margin-top:8px; padding-top:10px; border-top:1px dashed var(--border);
+    display:flex; align-items:center; justify-content:space-between; font-size:12.5px; color:var(--text-dim);
+  }
+  .cursor-diff b{color:var(--accent-2); font-size:13px}
+
+  .btn{
+    width:100%; display:flex; align-items:center; justify-content:center; gap:8px;
+    border:none; border-radius:var(--radius-sm); padding:11px 14px; font-size:13px; font-weight:700; cursor:pointer;
+  }
+  .btn svg{width:15px;height:15px}
+  .btn-primary{background:linear-gradient(135deg,#6A6EF0,#5457E0); color:#fff; box-shadow:0 8px 18px -8px rgba(91,95,239,.6)}
+  .btn-primary:hover{filter:brightness(1.05)}
+  .btn-ghost{background:linear-gradient(145deg,#EEF2F6,#E3E8EF); color:var(--text-dim); margin-top:8px; box-shadow:var(--shadow-soft)}
+  .btn-ghost:hover{background:#EFF0FA; color:var(--text)}
+  .btn[disabled]{opacity:.5; cursor:not-allowed}
+
+  .statusbar{
+    display:flex; align-items:center; justify-content:space-between; font-size:11.5px; color:var(--text-faint);
+    padding:6px 4px 0;
+  }
+  .statusbar .ok{color:var(--green); display:flex; align-items:center; gap:6px; font-weight:600; padding:7px 11px; border-radius:999px; background:linear-gradient(145deg,#E8F2EC,#DFEAE3); box-shadow:var(--shadow-in)}
+  .statusbar .ok svg{width:13px;height:13px}
+
+  .error-box{background:var(--red-soft); color:#B3232A; border:1px solid #F5C6C8; border-radius:var(--radius-sm); padding:12px 14px; font-size:12.5px; display:flex; align-items:flex-start; gap:10px}
+  .error-box svg{width:18px;height:18px;flex-shrink:0;margin-top:1px}
+  .error-box[hidden]{display:none}
+
+  /* ===== Tabs (visibilidade por seção) ===== */
+  [data-tabs]{display:none}
+  [data-tabs].tab-visible{display:block}
+  [data-tabs].tab-visible.tab-flex{display:flex}
+
+  /* ===== Sobre ===== */
+  .about-panel{padding:18px 4px 4px; font-size:12.5px; color:var(--text-dim); line-height:1.7}
+  .about-panel h2{font-size:16px; color:var(--text); margin-bottom:6px}
+  .about-panel ul{margin:8px 0 0 18px}
+
+  /* ===== Config de limiares ===== */
+  .thresh-row{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 0; border-bottom:1px solid var(--border)}
+  .thresh-row:last-child{border-bottom:none}
+  .thresh-row span{font-size:12.5px; color:var(--text-dim)}
+  .thresh-row input{
+    width:76px; text-align:right; font-weight:700; font-size:12.5px; color:var(--text);
+    border:1px solid rgba(255,255,255,.8); border-radius:8px; padding:5px 8px;
+    background:linear-gradient(145deg,#E6EBF1,#F2F5F8); box-shadow:var(--shadow-in);
+  }
+  .thresh-note{font-size:10.5px; color:var(--text-faint); margin-top:8px; line-height:1.5}
+
+  /* ===== Comparação de traços ===== */
+  .compare-row{display:flex; align-items:center; gap:10px}
+  .compare-row .no-file{flex:1}
+  .compare-file{flex:1; min-width:0; font-size:12px; color:var(--text-dim); word-break:break-all}
+  .compare-legend{display:flex; align-items:center; gap:8px; font-size:11px; color:var(--text-dim); margin-top:8px}
+  .compare-swatch{width:14px;height:3px;border-radius:2px;display:inline-block}
+
+  /* ===== Loading overlay ===== */
+  .loading-overlay{
+    position:absolute; inset:0; display:none; align-items:center; justify-content:center; gap:10px;
+    background:rgba(238,242,247,.75); border-radius:12px; font-size:12.5px; font-weight:700; color:var(--text-dim); z-index:5;
+  }
+  .loading-overlay.show{display:flex}
+  .spinner{width:16px;height:16px;border-radius:50%;border:2.5px solid rgba(91,95,239,.25);border-top-color:var(--accent); animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .chart-wrap{position:relative}
+
+  .sr-only{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap}
+
+  /* ===== Mobile import ===== */
+  .mobile-import-card{display:none}
+  .mobile-file-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+
+  @media (max-width:1080px){
+    .main{padding:18px 20px 26px}
+    .body-grid{grid-template-columns:minmax(0,1fr) 280px;gap:14px}
+    .metrics-row{gap:10px}
+    .metric-card{padding:12px 13px;gap:9px}
+    .metric-value{font-size:15px}
+  }
+
+  @media (max-width:720px){
+    body{display:block;min-width:0;overflow-x:hidden}
+    .sidebar{display:none}
+    .main{width:100%;min-width:0;padding:10px 10px 18px;gap:10px}
+
+    .mobile-import-card{
+      display:flex;align-items:center;width:100%;min-height:68px;
+      padding:10px 12px;border-radius:14px;cursor:pointer;
+      background:linear-gradient(145deg,#F1F5F9,#E6EBF1);
+      border:1px solid rgba(255,255,255,.8);box-shadow:var(--shadow-out);
+      color:var(--text);
+    }
+    .mobile-import-card:active{box-shadow:var(--shadow-in);transform:translateY(1px)}
+    .mobile-import-icon{
+      width:42px;height:42px;flex:0 0 42px;border-radius:12px;
+      display:flex;align-items:center;justify-content:center;color:var(--accent);
+      background:linear-gradient(145deg,#EDF2F8,#E3E8EF);box-shadow:var(--shadow-in)
+    }
+    .mobile-import-icon svg{width:22px;height:22px}
+    .mobile-import-copy{min-width:0;flex:1;padding:0 10px}
+    .mobile-import-copy b{display:block;font-size:13px;line-height:1.25}
+    .mobile-import-copy span{display:block;margin-top:3px;font-size:10.5px;color:var(--text-faint);line-height:1.3}
+    .mobile-import-arrow{font-size:26px;line-height:1;color:var(--text-faint);padding-left:4px}
+
+    .topbar{align-items:center;gap:8px}
+    .topbar h1{font-size:21px}
+    .topbar .sub{font-size:11px}
+    .win-ctrls{display:none}
+
+    .metrics-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+    .metric-card{min-width:0;padding:11px 10px;border-radius:13px;gap:9px}
+    .metric-ic{width:34px;height:34px;border-radius:10px;flex:0 0 34px}
+    .metric-ic svg{width:16px;height:16px}
+    .metric-label{font-size:9px;line-height:1.2}
+    .metric-value{font-size:14px;line-height:1.2;white-space:normal;word-break:break-word}
+
+    .body-grid{grid-template-columns:minmax(0,1fr);gap:10px}
+    .side-col{gap:10px}
+    .card,.panel{width:100%;min-width:0;border-radius:14px}
+    .card-head{padding:13px 12px 5px}
+    .card-title{font-size:10px}
+    .icon-btns{gap:5px}
+    .icon-btns button{width:32px;height:32px}
+    .chart-wrap{padding:6px 8px 4px}
+    #traceCanvas{width:100%;height:270px;min-height:220px;border-radius:10px}
+    .chart-hint{font-size:10px;padding:2px 10px 11px}
+    .empty-state{padding:42px 16px}
+
+    .panel{padding:13px 12px}
+    .panel-title{font-size:10px;margin-bottom:9px}
+    .file-row{gap:9px;min-width:0}
+    .file-ic{width:34px;height:34px;flex:0 0 34px}
+    .file-name{font-size:12px;overflow-wrap:anywhere}
+    .file-meta{font-size:10px}
+    .file-check{margin-left:auto}
+
+    .cfg-row{gap:8px;padding:8px 0;font-size:11.5px}
+    .cfg-row span:first-child{min-width:0;overflow-wrap:anywhere}
+    .cfg-val{font-size:11px;padding:5px 7px;white-space:nowrap;flex-shrink:0}
+
+    .cursor-row{min-width:0}
+    .cursor-diff{font-size:11px}
+
+    .events-scroll{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+    table.events{min-width:560px;font-size:11.5px}
+    table.events thead th{padding:8px 10px;font-size:9px}
+    table.events tbody td{padding:9px 10px}
+  }
+
+  @media (max-width:420px){
+    .main{padding-left:8px;padding-right:8px}
+    .metrics-row{grid-template-columns:minmax(0,1fr);gap:8px}
+    .metric-card{padding:10px 11px}
+    .metric-value{font-size:15px}
+    .mobile-import-card{min-height:64px;padding:9px 10px}
+    .mobile-import-icon{width:38px;height:38px;flex-basis:38px}
+    .mobile-import-copy b{font-size:12px}
+    .mobile-import-copy span{font-size:10px}
+    #traceCanvas{height:245px;min-height:200px}
+    .icon-btns button{width:30px;height:30px}
+    .card-head{padding-left:10px;padding-right:10px}
+  }
+
+  @media (max-width:340px){
+    .main{padding-left:6px;padding-right:6px}
+    .mobile-import-copy{padding:0 7px}
+    .mobile-import-copy span{display:none}
+    #traceCanvas{height:220px}
+  }
+
+
+  #installAppBtn{font-size:16px}
+  #installAppBtn[hidden]{display:none}
+</style>
+</head>
+<body>
+
+<!-- ================= SIDEBAR ================= -->
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#5B5FEF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2 7 4-14 2 7h8"/></svg>
+    </div>
+    <div class="brand-label">OTDR</div>
+  </div>
+
+  <div class="import-card" id="importCard">
+    <svg class="ic-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 18a4.5 4.5 0 01-.4-8.98A5.5 5.5 0 0117 8a4 4 0 011 7.87"/><path d="M12 12v7M9.5 16.5L12 19l2.5-2.5"/></svg>
+    <div class="ic-title">Importar .SOR</div>
+    <div class="ic-sub">Arraste e solte o arquivo aqui ou clique para selecionar</div>
+    <input type="file" id="fileInput" accept=".sor">
+  </div>
+
+  <button class="nav-item active" data-tab="leitura">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
+    Leitura
+  </button>
+  <button class="nav-item" data-tab="arquivo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h5l2 2h11v10H3z"/></svg>
+    Arquivo
+  </button>
+  <button class="nav-item" data-tab="traco">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l5-6 4 4 8-9"/></svg>
+    Traço
+  </button>
+  <button class="nav-item" data-tab="eventos">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="3.5" cy="18" r="1.4" fill="currentColor" stroke="none"/></svg>
+    Eventos
+  </button>
+  <button class="nav-item" data-tab="medicoes">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 16l5-9 4 6 3-4 6 7"/><path d="M3 20h18"/></svg>
+    Medições
+  </button>
+  <button class="nav-item" data-tab="config">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.56V21a2 2 0 11-4 0v-.09a1.7 1.7 0 00-1-1.56 1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.7 1.7 0 004.6 15a1.7 1.7 0 00-1.56-1H3a2 2 0 110-4h.09A1.7 1.7 0 004.6 9a1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06A1.7 1.7 0 009 4.6a1.7 1.7 0 001-1.56V3a2 2 0 114 0v.09A1.7 1.7 0 0015 4.6a1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06A1.7 1.7 0 0019.4 9a1.7 1.7 0 001.56 1H21a2 2 0 110 4h-.09a1.7 1.7 0 00-1.56 1z"/></svg>
+    Configurações
+  </button>
+  <button class="nav-item" data-tab="sobre">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+    Sobre
+  </button>
+
+  <div class="nav-spacer"></div>
+</aside>
+
+<!-- ================= MAIN ================= -->
+<main class="main">
+
+  <!-- Importação visível em celulares/tablets -->
+  <div class="mobile-import-card" id="mobileImportCard" role="button" tabindex="0" aria-label="Importar arquivo SOR">
+    <div class="mobile-import-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 18a4.5 4.5 0 01-.4-8.98A5.5 5.5 0 0117 8a4 4 0 011 7.87"/><path d="M12 12v7M9.5 16.5L12 19l2.5-2.5"/></svg>
+    </div>
+    <div class="mobile-import-copy">
+      <b>Importar arquivo .SOR</b>
+      <span>Toque aqui para selecionar um arquivo OTDR</span>
+    </div>
+    <div class="mobile-import-arrow">›</div>
+    <input class="mobile-file-input" type="file" id="mobileFileInput" accept=".sor" aria-label="Selecionar arquivo SOR">
+  </div>
+
+  <div class="topbar">
+    <div>
+      <h1>Leitor OTDR</h1>
+      <div class="sub">Leitura e análise de arquivos .SOR</div>
+    </div>
+    <div class="win-ctrls">
+    <button id="installAppBtn" type="button" title="Instalar aplicativo" aria-label="Instalar aplicativo" hidden>⬇</button>
+      <button title="Minimizar" aria-label="Minimizar"><svg viewBox="0 0 24 24" width="14" height="14"><rect x="5" y="11" width="14" height="2" fill="currentColor"/></svg></button>
+      <button title="Maximizar" aria-label="Maximizar"><svg viewBox="0 0 24 24" width="12" height="12"><rect x="5" y="5" width="14" height="14" rx="1.5" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>
+      <button title="Fechar" aria-label="Fechar"><svg viewBox="0 0 24 24" width="14" height="14"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+    </div>
+  </div>
+
+  <div class="metrics-row" id="metricsRow"></div>
+
+  <div class="body-grid" id="bodyGrid">
+    <!-- LEFT: chart + events -->
+    <div class="left-col" style="display:flex; flex-direction:column; gap:14px">
+
+      <div class="card" data-tabs="leitura traco">
+        <div class="card-head">
+          <div class="card-title">Traço OTDR</div>
+          <div class="icon-btns">
+            <button id="zoomInBtn" title="Aproximar" aria-label="Aproximar zoom no gráfico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M11 8v6M8 11h6"/></svg></button>
+            <button id="zoomOutBtn" title="Afastar" aria-label="Afastar zoom do gráfico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6"/></svg></button>
+            <button id="resetBtn" title="Redefinir zoom" aria-label="Redefinir zoom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><path d="M12 3a9 9 0 106.7 3"/><path d="M21 3v5h-5"/></svg></button>
+            <button id="fitBtn" title="Tela cheia" aria-label="Alternar tela cheia do gráfico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+          </div>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="traceCanvas"></canvas>
+          <div id="loadingOverlay" class="loading-overlay"><span class="spinner" aria-hidden="true"></span><span>Lendo arquivo...</span></div>
+        </div>
+        <div id="errorBox" class="error-box" hidden role="alert">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+          <span id="errorBoxText"></span>
+        </div>
+        <div id="chartHint" class="chart-hint">Clique em um evento para ver os detalhes · role a roda do mouse para zoom</div>
+        <div id="emptyState" class="empty-state">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 12h4l2 7 4-14 2 7h8"/></svg>
+          <b>Nenhum arquivo carregado</b>
+          <span>Importe um arquivo .SOR para visualizar o traço</span>
+        </div>
+      </div>
+
+      <div class="card" id="eventsCard" style="display:none;" data-tabs="leitura eventos">
+        <div class="card-head" style="padding-bottom:12px">
+          <div class="card-title">Eventos Detectados</div>
+          <div class="icon-btns">
+            <button id="exportEventsBtn" title="Exportar eventos (CSV)" aria-label="Exportar tabela de eventos em CSV"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/></svg></button>
+          </div>
+        </div>
+        <div class="events-scroll">
+          <table class="events" id="eventTable"></table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT: side panels -->
+    <div class="side-col">
+
+      <div class="panel" data-tabs="leitura arquivo">
+        <div class="panel-title">Arquivo</div>
+        <div id="fileBox" class="no-file">Nenhum arquivo carregado</div>
+      </div>
+
+      <div class="panel" data-tabs="leitura config">
+        <div class="panel-title">Configurações da Leitura</div>
+        <div id="cfgBox">
+          <div class="cfg-row"><span>Comprimento de onda</span><span class="cfg-val">—</span></div>
+          <div class="cfg-row"><span>Faixa dinâmica</span><span class="cfg-val">—</span></div>
+          <div class="cfg-row"><span>Largura de pulso</span><span class="cfg-val">—</span></div>
+          <div class="cfg-row"><span>Tempo de aquisição</span><span class="cfg-val">—</span></div>
+          <div class="cfg-row"><span>Índice de refração (IOR)</span><span class="cfg-val">—</span></div>
+        </div>
+      </div>
+
+      <div class="panel" data-tabs="config">
+        <div class="panel-title">Limiares de Análise</div>
+        <div id="threshBox">
+          <div class="thresh-row"><span>Perda média (laranja) ≥</span><span><input type="number" id="threshMedium" step="0.05" min="0" value="0.4"> dB</span></div>
+          <div class="thresh-row"><span>Perda alta (vermelho) ≥</span><span><input type="number" id="threshHigh" step="0.05" min="0" value="1.0"> dB</span></div>
+          <div class="thresh-row"><span>Reflectância ruim ≥</span><span><input type="number" id="threshReflect" step="1" value="-40"> dB</span></div>
+        </div>
+        <div class="thresh-note">Esses limiares definem as cores de destaque na tabela de eventos, no gráfico e no relatório impresso. Ajuste conforme o padrão de aceitação da sua operadora.</div>
+        <button class="btn btn-ghost" id="threshResetBtn" type="button" style="margin-top:12px">Restaurar padrão</button>
+      </div>
+
+      <div class="panel" data-tabs="leitura traco">
+        <div class="panel-title">Aparência do Gráfico</div>
+        <div class="trace-themes" style="margin-top:0;padding-top:0;border-top:none">
+          <button class="trace-theme" data-trace-theme="blue" type="button">
+            <span class="theme-swatch blue-swatch"></span>
+            <span><b>Original</b><small>Traço azul / fundo claro</small></span>
+          </button>
+
+          <button class="trace-theme active" data-trace-theme="orange-black" type="button">
+            <span class="theme-swatch orange-black-swatch"></span>
+            <span><b>Traço laranja / fundo preto</b><small>Alto contraste</small></span>
+          </button>
+
+          <button class="trace-theme" data-trace-theme="green-black" type="button">
+            <span class="theme-swatch green-black-swatch"></span>
+            <span><b>Traço verde fluorescente / fundo preto</b><small>Alto contraste</small></span>
+          </button>
+        </div>
+      </div>
+
+      <div class="panel" data-tabs="leitura traco arquivo">
+        <div class="panel-title">Comparar Traço</div>
+        <div class="compare-row">
+          <label class="btn btn-ghost" for="compareInput" style="margin-top:0;cursor:pointer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 18a4.5 4.5 0 01-.4-8.98A5.5 5.5 0 0117 8a4 4 0 011 7.87"/><path d="M12 12v7M9.5 16.5L12 19l2.5-2.5"/></svg>
+            Carregar referência
+          </label>
+          <input type="file" id="compareInput" accept=".sor" class="mobile-file-input" aria-label="Selecionar arquivo .SOR de referência para comparação">
+        </div>
+        <div id="compareInfo" class="no-file" style="margin-top:10px">Nenhum traço de referência carregado</div>
+        <div class="compare-legend" id="compareLegend" style="display:none">
+          <span class="compare-swatch" style="background:#8B95B8"></span> Traço de referência
+          <button class="toggle on" id="compareToggle" style="margin-left:auto" aria-label="Mostrar/ocultar traço de referência"></button>
+        </div>
+      </div>
+
+      <div class="panel" data-tabs="leitura medicoes">
+        <div class="panel-title">Cursores <button id="cursorToggle" class="toggle on" aria-label="Ativar ou desativar cursores"></button></div>
+        <div id="cursorBox">
+          <div class="cursor-row"><span class="cursor-tag" style="background:#3F8CFF">A</span> <b id="curAdist">—</b> <span class="dim" id="curAdb">—</span></div>
+          <div class="cursor-row"><span class="cursor-tag" style="background:#8B5CF6">B</span> <b id="curBdist">—</b> <span class="dim" id="curBdb">—</span></div>
+          <div class="cursor-diff"><span>A – B · Perda do trecho</span><b id="curDiff">—</b></div>
+        </div>
+      </div>
+
+      <div class="panel" data-tabs="sobre">
+        <div class="about-panel">
+          <h2>Leitor OTDR</h2>
+          <p>Aplicativo local (100% client-side) para leitura e análise de traços OTDR em arquivos .SOR (Bellcore/Telcordia SR-4731 v2.x).</p>
+          <ul>
+            <li>Nenhum dado é enviado a servidores — todo o processamento ocorre no seu navegador.</li>
+            <li>Suporta importação, medição por cursores, tabela de eventos, comparação de traços e geração de relatório.</li>
+            <li>Limiares de perda/reflectância são configuráveis na aba Configurações.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="panel">
+        <button class="btn btn-primary" id="reportBtn" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+          Gerar Relatório
+        </button>
+        <button class="btn btn-ghost" id="pdfBtn" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
+          Baixar PDF
+        </button>
+        <button class="btn btn-ghost" id="exportBtn" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
+          Exportar Traço
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="statusbar" role="status" aria-live="polite">
+    <span id="statusLeft" class="ok" style="visibility:hidden">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+      Arquivo carregado com sucesso
+    </span>
+    <span id="statusRight">Unidades: km / dB</span>
+  </div>
+
+</main>
+
+<script>
+(function(){
+'use strict';
+
+/* ================================================================
+   .sor (Bellcore/Telcordia SR-4731 v2.x) parser — extracted from the
+   original clean-room implementation, unchanged parsing logic.
+   ================================================================ */
+function parseSor(arrayBuffer){
+  /*
+     V2 — parser defensivo SR-4731/SOR.
+     Mantém a interface original, mas valida a estrutura do Map, limites dos
+     blocos e o cabeçalho DataPts. O fator de escala do DataPts deixa de ser
+     assumido como 1000.
+  */
+  var buf=new DataView(arrayBuffer);
+  var bytes=new Uint8Array(arrayBuffer);
+  var len=arrayBuffer.byteLength;
+
+  function ensure(pos,n,label){
+    if(pos<0 || n<0 || pos+n>len) throw new Error('Arquivo .sor truncado ao ler '+label+'.');
+  }
+  function ascii(start,end){
+    ensure(start,Math.max(0,end-start),'texto');
+    var out='';
+    for(var i=start;i<end;i++) out+=String.fromCharCode(bytes[i]);
+    return out;
+  }
+  function cstring(offset,limit){
+    var end=Math.min(limit==null?len:limit,len);
+    if(offset<0 || offset>end) throw new Error('String inválida no arquivo .sor.');
+    var p=offset;
+    while(p<end && bytes[p]!==0) p++;
+    if(p>=end) throw new Error('String não terminada dentro do bloco .sor.');
+    return {str:ascii(offset,p),next:p+1};
+  }
+  function finitePositive(v,name){
+    if(!isFinite(v) || v<=0) throw new Error('Parâmetro '+name+' inválido no .sor.');
+    return v;
+  }
+
+  if(len<12 || ascii(0,4)!=='Map\0') throw new Error('Este arquivo não parece ser um .sor válido (bloco Map ausente).');
+
+  var mapVersion=buf.getUint16(4,true);
+  var mapSize=buf.getUint32(6,true);
+  var blockCount=buf.getUint16(10,true);
+  if(mapSize<12 || mapSize>len) throw new Error('Arquivo .sor corrompido: tamanho do bloco Map inválido.');
+  if(blockCount<1 || blockCount>10000) throw new Error('Arquivo .sor corrompido: quantidade de blocos inválida.');
+
+  var dir=[];
+  var p=12;
+  for(var di=0;di<blockCount-1 && p<mapSize;di++){
+    var r=cstring(p,mapSize); p=r.next;
+    ensure(p,6,'descritor de bloco');
+    var bver=buf.getUint16(p,true);
+    var bsize=buf.getInt32(p+2,true);
+    p+=6;
+    if(bsize<0) throw new Error('Bloco '+r.str+' possui tamanho negativo.');
+    dir.push({name:r.str,bver:bver,bsize:bsize});
+  }
+  if(p>mapSize) throw new Error('Arquivo .sor corrompido: diretório Map ultrapassa o bloco.');
+  if(dir.length===0) throw new Error('Arquivo .sor sem descritores de blocos.');
+
+  var offset=mapSize;
+  var blocks={};
+  for(var i=0;i<dir.length;i++){
+    var d=dir[i];
+    if(offset+d.bsize>len) throw new Error('Bloco '+d.name+' ultrapassa o fim do arquivo.');
+    if(blocks[d.name]) throw new Error('Arquivo .sor contém bloco duplicado não suportado: '+d.name+'.');
+    blocks[d.name]={offset:offset,size:d.bsize,version:d.bver};
+    offset+=d.bsize;
+  }
+  if(offset>len) throw new Error('Estrutura de blocos inválida no .sor.');
+  if(!blocks.FxdParams || !blocks.DataPts) throw new Error('Arquivo .sor não suportado: blocos FxdParams/DataPts ausentes.');
+
+  function blockPayload(block,name){
+    var hlen=name.length+1;
+    if(block.size<hlen) throw new Error('Bloco '+name+' é menor que seu cabeçalho.');
+    ensure(block.offset,hlen,'bloco '+name);
+    if(ascii(block.offset,block.offset+name.length+1)!==name+'\0') throw new Error('Cabeçalho inválido no bloco '+name+'.');
+    return block.offset+hlen;
+  }
+
+  /* ---------- FxdParams ---------- */
+  var fx=blocks.FxdParams, fb=blockPayload(fx,'FxdParams');
+  var fxEnd=fx.offset+fx.size;
+  ensure(fb,4,'timestamp');
+  var dateUnix=buf.getUint32(fb,true);
+  ensure(fb+6,2,'comprimento de onda');
+  var wavelengthNm=buf.getUint16(fb+6,true)/10;
+  ensure(fb+18,2,'largura de pulso');
+  var pulseWidthNs=buf.getUint16(fb+18,true);
+  ensure(fb+20,4,'espaçamento');
+  var spacingRaw=buf.getUint32(fb+20,true);
+  ensure(fb+24,4,'número de pontos');
+  var numDataPoints=buf.getUint32(fb+24,true);
+  ensure(fb+28,4,'IOR');
+  var iorRaw=buf.getUint32(fb+28,true);
+  var ior=iorRaw/1e5;
+  ensure(fb+32,2,'backscatter');
+  var backscatterDb=buf.getUint16(fb+32,true)*-0.1;
+  ensure(fb+40,4,'faixa de aquisição');
+  var rangeRaw=buf.getUint32(fb+40,true);
+  var traceType=(fb+66<=fxEnd)?ascii(fb+64,fb+66):'';
+  finitePositive(ior,'IOR');
+  finitePositive(spacingRaw,'espaçamento');
+
+  var DIST_K=2e-5*1.498962239;
+  var SPACING_K=2e-6*1.498962239;
+  function toKm(raw){ return raw*DIST_K/ior; }
+  var acquisitionRangeKm=toKm(rangeRaw);
+  var spacingM=spacingRaw*SPACING_K/ior;
+
+  /* ---------- GenParams ---------- */
+  var fiberType='',cableId='',fiberId='';
+  if(blocks.GenParams){
+    var gp=blocks.GenParams, gq=blockPayload(gp,'GenParams'), ge=gp.offset+gp.size;
+    var cr=cstring(gq,ge); cableId=cr.str; gq=cr.next;
+    var fr=cstring(gq,ge); fiberId=fr.str; gq=fr.next;
+    if(gq+2<=ge){
+      var ftCode=buf.getInt16(gq,true);
+      var FIBER_TYPES={651:'G.651',652:'G.652',653:'G.653',654:'G.654',655:'G.655'};
+      fiberType=FIBER_TYPES[ftCode]||String(ftCode);
+    }
+  }
+
+  /* ---------- KeyEvents ---------- */
+  var events=[],footer=null,lastKeyEvent=null;
+  if(blocks.KeyEvents){
+    var ke=blocks.KeyEvents,kq=blockPayload(ke,'KeyEvents'),keEnd=ke.offset+ke.size;
+    ensure(kq,2,'quantidade de eventos');
+    var numEvents=buf.getUint16(kq,true); kq+=2;
+    if(numEvents>10000) throw new Error('Arquivo .sor corrompido: número de eventos excessivo.');
+    var EVENT_TYPE_MAP={'0':'perda','1':'reflexao','2':'multiplo'};
+    function parseCommonEvent(isLast){
+      ensure(kq,42,'evento KeyEvents');
+      var base=kq;
+      var eventNumber=buf.getUint16(base,true);
+      var distRaw=buf.getUint32(base+2,true);
+      var slopeDbKm=buf.getInt16(base+6,true)*0.001;
+      var spliceLossDb=buf.getInt16(base+8,true)*0.001;
+      var reflLossDb=buf.getInt32(base+10,true)*0.001;
+      var typeCode=ascii(base+14,base+22);
+      /* Os 5 marcadores ocupam 20 bytes após a técnica de perda. */
+      var markerBase=base+24;
+      var markers=[];
+      for(var mi=0;mi<5;mi++) markers.push(buf.getInt32(markerBase+mi*4,true));
+      kq=base+42;
+      var c=cstring(kq,keEnd); kq=c.next;
+      var ev={
+        eventNumber:eventNumber,
+        distanceKm:toKm(distRaw),
+        propagationRaw:distRaw,
+        slopeDbKm:slopeDbKm,
+        spliceLossDb:spliceLossDb,
+        reflectanceDb:reflLossDb!==0?reflLossDb:null,
+        eventType:EVENT_TYPE_MAP[typeCode.charAt(0)]||'desconhecido',
+        eventCode:typeCode.replace(/\0/g,'').trim(),
+        markers:markers,
+        comment:c.str.replace(/\s+$/,''),
+        isLastKeyEvent:!!isLast
+      };
+      if(isLast){
+        ensure(kq,22,'dados do último evento');
+        ev.endToEndLossDb=buf.getInt32(kq,true)*0.001;
+        ev.endToEndMarkerPosition1=buf.getInt32(kq+4,true);
+        ev.endToEndMarkerPosition2=buf.getInt32(kq+8,true);
+        ev.opticalReturnLossDb=buf.getUint16(kq+12,true)*0.001;
+        ev.opticalReturnLossMarkerPosition1=buf.getInt32(kq+14,true);
+        ev.opticalReturnLossMarkerPosition2=buf.getInt32(kq+18,true);
+        kq+=22;
+        lastKeyEvent=ev;
+      }
+      return ev;
+    }
+    for(var ei=0;ei<numEvents;ei++) events.push(parseCommonEvent(ei===numEvents-1));
+    if(kq>keEnd) throw new Error('Bloco KeyEvents inconsistente ou truncado.');
+    if(lastKeyEvent){
+      footer={
+        totalLossDb:lastKeyEvent.endToEndLossDb,
+        orlDb:lastKeyEvent.opticalReturnLossDb,
+        marker1:lastKeyEvent.endToEndMarkerPosition1,
+        marker2:lastKeyEvent.endToEndMarkerPosition2,
+        orlMarker1:lastKeyEvent.opticalReturnLossMarkerPosition1,
+        orlMarker2:lastKeyEvent.opticalReturnLossMarkerPosition2
+      };
+    }
+  }
+
+  if(events.length===0){
+    events=[
+      {eventNumber:1,distanceKm:0,eventType:'inicio',comment:'',synthetic:true},
+      {eventNumber:2,distanceKm:acquisitionRangeKm,eventType:'fim',comment:'',synthetic:true,isEnd:true}
+    ];
+  }else{
+    /* O último KeyEvent é o registro que contém as posições de medição de
+       end-to-end. Ele é tratado como fim lógico, sem inventar outro evento. */
+    events[events.length-1].isEnd=true;
+  }
+
+  var lastRealDistance=events.reduce(function(mx,e){return Math.max(mx,isFinite(e.distanceKm)?e.distanceKm:0);},0);
+  var fiberLengthKm=lastRealDistance>0?lastRealDistance:acquisitionRangeKm;
+
+  /* ---------- DataPts: suporta múltiplos scale factors ---------- */
+  var dp=blocks.DataPts,dq=blockPayload(dp,'DataPts'),dpEnd=dp.offset+dp.size;
+  ensure(dq,6,'cabeçalho DataPts');
+  var declaredPointCount=buf.getInt32(dq,true);
+  var scaleFactorCount=buf.getUint16(dq+4,true);
+  if(declaredPointCount<0 || declaredPointCount>100000000) throw new Error('DataPts: quantidade de pontos inválida.');
+  if(scaleFactorCount<1 || scaleFactorCount>64) throw new Error('DataPts: quantidade de fatores de escala inválida.');
+  var scaleGroups=[];
+  var dataPos=dq+6;
+  var totalRead=0;
+  for(var sg=0;sg<scaleFactorCount;sg++){
+    ensure(dataPos,6,'cabeçalho do fator de escala DataPts');
+    var groupCount=buf.getInt32(dataPos,true);
+    var scaleFactor=buf.getInt16(dataPos+4,true);
+    dataPos+=6;
+    if(groupCount<0 || groupCount>100000000) throw new Error('DataPts: quantidade de pontos do grupo inválida.');
+    ensure(dataPos,groupCount*2,'dados do grupo DataPts');
+    scaleGroups.push({count:groupCount,scaleFactor:scaleFactor,offset:dataPos});
+    dataPos+=groupCount*2;
+    totalRead+=groupCount;
+  }
+  if(dataPos>dpEnd) throw new Error('DataPts ultrapassa o tamanho declarado do bloco.');
+  if(declaredPointCount && totalRead!==declaredPointCount){
+    throw new Error('DataPts inconsistente: o bloco declara '+declaredPointCount+' pontos, mas os fatores de escala contêm '+totalRead+'.');
+  }
+  var selectedGroup=scaleGroups[0];
+  if(numDataPoints){
+    for(var gi=0;gi<scaleGroups.length;gi++){
+      if(scaleGroups[gi].count===numDataPoints){selectedGroup=scaleGroups[gi];break;}
+    }
+  }
+  var ptCount=selectedGroup.count;
+  var scaleFactor=selectedGroup.scaleFactor;
+  if(!isFinite(scaleFactor) || scaleFactor===0) throw new Error('DataPts: fator de escala inválido ('+scaleFactor+').');
+  var rawPoints=new Uint16Array(ptCount),maxRaw=0;
+  for(var pi=0;pi<ptCount;pi++){
+    var v=buf.getUint16(selectedGroup.offset+pi*2,true);
+    rawPoints[pi]=v;
+    if(v>maxRaw) maxRaw=v;
+  }
+
+  /* SR-4731 DataPts: amostras são armazenadas como valores de 16 bits e o
+     fator de escala é expresso como 1000*SF; a conversão de exibição é
+     (max_raw - raw) * scale / 1_000_000. */
+  var displayScale=scaleFactor/1000000;
+  function valueAtIndex(idx){ return (maxRaw-rawPoints[idx])*displayScale; }
+
+  function getTraceCurve(maxPoints){
+    maxPoints=maxPoints||2000;
+    var n=rawPoints.length;
+    if(n===0) return {points:[],numPointsTotal:0,numPointsReturned:0};
+    var indices=[];
+    if(n<=maxPoints){ for(var k=0;k<n;k++) indices.push(k); }
+    else{
+      var seen=Object.create(null);
+      for(var m=0;m<maxPoints;m++){
+        var idx=Math.round(m*(n-1)/(maxPoints-1));
+        if(!seen[idx]){seen[idx]=1;indices.push(idx);}
+      }
+    }
+    var points=indices.map(function(idx){
+      return {distanceKm:(idx*spacingM)/1000,valueDb:valueAtIndex(idx),index:idx};
+    });
+    return {points:points,numPointsTotal:n,numPointsReturned:points.length,scaleFactor:scaleFactor};
+  }
+
+  /* Pontos completos são mantidos para medições A-B; a curva de 2000 pontos
+     serve somente para renderização. */
+  function rawValueAtKm(km){
+    var n=rawPoints.length;
+    if(!n) return 0;
+    var pos=spacingM>0?(km*1000/spacingM):0;
+    if(pos<=0) return valueAtIndex(0);
+    if(pos>=n-1) return valueAtIndex(n-1);
+    var lo=Math.floor(pos),hi=lo+1,t=pos-lo;
+    return valueAtIndex(lo)+(valueAtIndex(hi)-valueAtIndex(lo))*t;
+  }
+
+  var warnings=[];
+  if(scaleGroups.length>1) warnings.push('DataPts possui '+scaleGroups.length+' fatores de escala; o primeiro grupo compatível com o número de pontos de FxdParams foi usado para o traço exibido.');
+  if(numDataPoints && numDataPoints!==ptCount) warnings.push('FxdParams informa '+numDataPoints+' pontos; o grupo DataPts selecionado possui '+ptCount+'.');
+  if(mapVersion!==200) warnings.push('Versão do Map = '+mapVersion+'; a interface foi otimizada para SR-4731 v2.x.');
+
+  return {
+    summary:{
+      testDate:new Date(dateUnix*1000), wavelengthNm:wavelengthNm, pulseWidthNs:pulseWidthNs,
+      ior:ior, fiberLengthKm:fiberLengthKm, acquisitionRangeKm:acquisitionRangeKm,
+      fiberType:fiberType,cableId:cableId,fiberId:fiberId,dataPoints:ptCount,
+      declaredDataPoints:declaredPointCount,spacingM:spacingM,backscatterDb:backscatterDb,
+      traceType:traceType,mapVersion:mapVersion,scaleFactor:scaleFactor,scaleFactorCount:scaleFactorCount,
+      displayScale:displayScale,rawMax:maxRaw
+    },
+    events:events,footer:footer,lastKeyEvent:lastKeyEvent,
+    curve:getTraceCurve(2000),rawPoints:rawPoints,rawValueAtKm:rawValueAtKm,warnings:warnings,
+    integrity:{structural:true,checksumPresent:!!blocks.Cksum,checksumStatus:blocks.Cksum?'não validado':'não informado'}
+  };
+}
+
+/* ================================================================
+   Wiring da interface
+   ================================================================ */
+var trace=null;
+var refTrace=null;
+var refFile=null;
+var compareOn=true;
+var traceTheme=localStorage.getItem('otdrTraceTheme')||'orange-black';
+var cursorsOn=true;
+var cursors={A:{km:0}, B:{km:0}};
+var dragging=null;
+var layout=null;
+var zoom={min:0,max:1};
+var selectedEvent=null;
+var currentFile=null;
+var activeTab='leitura';
+
+var THRESH_DEFAULT={medium:0.4, high:1.0, reflect:-40};
+var THRESH=(function(){
+  try{
+    var saved=JSON.parse(localStorage.getItem('otdrThresholds')||'null');
+    if(saved && typeof saved.medium==='number' && typeof saved.high==='number' && typeof saved.reflect==='number') return saved;
+  }catch(e){}
+  return {medium:THRESH_DEFAULT.medium, high:THRESH_DEFAULT.high, reflect:THRESH_DEFAULT.reflect};
+})();
+
+var importCard=document.getElementById('importCard');
+var fileInput=document.getElementById('fileInput');
+var canvas=document.getElementById('traceCanvas');
+var ctx=canvas.getContext('2d');
+var emptyState=document.getElementById('emptyState');
+var chartHint=document.getElementById('chartHint');
+var eventsCard=document.getElementById('eventsCard');
+var statusLeft=document.getElementById('statusLeft');
+var reportBtn=document.getElementById('reportBtn');
+var exportBtn=document.getElementById('exportBtn');
+var errorBox=document.getElementById('errorBox');
+var errorBoxText=document.getElementById('errorBoxText');
+var loadingOverlay=document.getElementById('loadingOverlay');
+
+function showError(msg){
+  errorBoxText.textContent=msg;
+  errorBox.hidden=false;
+}
+function hideError(){
+  errorBox.hidden=true;
+  errorBoxText.textContent='';
+}
+
+var EVENT_COLORS={
+  conector:'#1FAE71', perda:'#1FAE71',
+  reflexao:'#F5A524', multiplo:'#F5A524',
+  fim:'#E5484D', inicio:'#1FAE71', desconhecido:'#8B95B8'
+};
+function classify(e, idx, arr){
+  if(e.isEnd || e.eventType==='fim') return 'fim';
+  if(e.eventType==='reflexao' || e.eventType==='multiplo') return 'reflexao';
